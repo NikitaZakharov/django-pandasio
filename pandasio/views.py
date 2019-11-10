@@ -14,29 +14,31 @@ class BaseDataFrameView(viewsets.ModelViewSet):
             serializer.save()
         return Response(status=status.HTTP_201_CREATED)
 
-    def get_dataframe_from_request(self, request):
+    @classmethod
+    def get_dataframe_from_request(cls, request):
         raise NotImplementedError
 
 
 class RecordsDataFrameView(BaseDataFrameView):
 
-    def get_dataframe_from_request(self, request):
+    @classmethod
+    def get_dataframe_from_request(cls, request):
         return pd.DataFrame.from_records(request.data)
     
     
 class CSVDataFrameView(BaseDataFrameView):
 
-    def get_dataframe_from_request(self, request):
-        _, files = request.FILES.popitem()
-        file = files[0]
+    @classmethod
+    def get_dataframe_from_request(cls, request):
+        file = next(request.FILES.values())
         dataframe = pd.read_csv(file)
         return dataframe
 
 
 class JSONDataFrameView(BaseDataFrameView):
 
-    def get_dataframe_from_request(self, request):
-        _, files = request.FILES.popitem()
-        file = files[0]
+    @classmethod
+    def get_dataframe_from_request(cls, request):
+        file = next(request.FILES.values())
         dataframe = pd.read_json(file)
         return dataframe
