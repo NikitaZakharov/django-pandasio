@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework import status
 
 
-class BaseModelDataFrameView(viewsets.ModelViewSet):
+class BaseDataFrameView(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         dataframe = self.get_dataframe_from_request(request=request)
@@ -18,7 +18,25 @@ class BaseModelDataFrameView(viewsets.ModelViewSet):
         raise NotImplementedError
 
 
-class RecordsModelDataFrameView(BaseModelDataFrameView):
+class RecordsDataFrameView(BaseDataFrameView):
 
     def get_dataframe_from_request(self, request):
         return pd.DataFrame.from_records(request.data)
+    
+    
+class CSVDataFrameView(BaseDataFrameView):
+
+    def get_dataframe_from_request(self, request):
+        _, files = request.FILES.popitem()
+        file = files[0]
+        dataframe = pd.read_csv(file)
+        return dataframe
+
+
+class JSONDataFrameView(BaseDataFrameView):
+
+    def get_dataframe_from_request(self, request):
+        _, files = request.FILES.popitem()
+        file = files[0]
+        dataframe = pd.read_json(file)
+        return dataframe
