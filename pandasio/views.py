@@ -11,7 +11,7 @@ class BaseDataFrameView(viewsets.ModelViewSet):
         dataframe = self.get_dataframe_from_request(request=request)
         serializer = self.get_serializer(data=dataframe)
         if serializer.is_valid(raise_exception=True):
-            serializer.save()
+            self.perform_create(serializer)
         return Response(status=status.HTTP_201_CREATED)
 
     @classmethod
