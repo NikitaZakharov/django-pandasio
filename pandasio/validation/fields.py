@@ -8,7 +8,7 @@ from pandasio.validation import validators
 __all__ = [
     'Empty', 'Field',
     'IntegerField', 'BooleanField', 'NullBooleanField',
-    'FloatField', 'CharField', 'DateField'
+    'FloatField', 'CharField', 'DateField', 'DateTimeField'
 ]
 
 
@@ -208,3 +208,26 @@ class DateField(Field):
 
     def to_representation(self, value):
         return value.apply(lambda x: x.strftime(self.format) if not pd.isnull(x) else x)
+
+
+class DateTimeField(Field):
+
+    default_error_messages = {
+        'invalid': 'Datetime values have wrong format. Use one of these formats instead: {format}',
+    }
+
+    def __init__(self, **kwargs):
+        self.format = kwargs.pop('format', serializers.empty)
+        assert self.format is not serializers.empty, '`format` is required for datetime column'
+        super().__init__(**kwargs)
+
+    def to_internal_value(self, value):
+        try:
+            value = pd.to_datetime(value, format=self.format, errors='raise')
+        except ValueError:
+            self.fail('invalid', format=self.format)
+        return value
+
+    def to_representation(self, value):
+        return value.apply(lambda x: x.strftime(self.format) if not pd.isnull(x) else x)
+
