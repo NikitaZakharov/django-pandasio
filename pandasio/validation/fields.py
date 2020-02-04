@@ -93,7 +93,10 @@ class IntegerField(Field):
             return data
 
         try:
-            data = data.astype(int)
+            if self.allow_null:
+                data = data.apply(lambda x: int(x) if not pd.isnull(x) else None, convert_dtype=False)
+            else:
+                data = data.astype(int)
         except ValueError:
             self.fail('invalid')
         except OverflowError:
@@ -102,7 +105,7 @@ class IntegerField(Field):
         return data
 
     def to_representation(self, value):
-        return value.astype(int)
+        return value
 
 
 class BooleanField(Field):
@@ -113,9 +116,7 @@ class BooleanField(Field):
         return data.astype(bool)
 
     def to_representation(self, value):
-        if value.dtype == bool:
-            return value
-        return value.astype(bool)
+        return value
 
 
 class NullBooleanField(Field):
@@ -126,27 +127,30 @@ class NullBooleanField(Field):
         super().__init__(**kwargs)
 
     def to_internal_value(self, data):
-        return data.apply(lambda x: bool(x) if not pd.isnull(x) else None)
+        return data.apply(lambda x: bool(x) if not pd.isnull(x) else None, convert_dtype=False)
 
     def to_representation(self, value):
-        return value.apply(lambda x: bool(x) if not pd.isnull(x) else None)
+        return value
 
 
 class FloatField(IntegerField):
 
     def to_internal_value(self, data):
-        if data.dtype == float:
+        if data.dtype == float and not self.allow_null:
             return data
 
         try:
-            data = data.astype(float)
+            if self.allow_null:
+                data = data.apply(lambda x: float(x) if not pd.isnull(x) else None, convert_dtype=False)
+            else:
+                data = data.astype(float)
         except ValueError:
             self.fail('invalid')
 
         return data
 
     def to_representation(self, value):
-        return value.astype(float)
+        return value
 
 
 class CharField(Field):
@@ -178,14 +182,17 @@ class CharField(Field):
 
     def to_internal_value(self, data):
         if data.dtype != object:
-            data = data.astype(str)
+            if self.allow_null:
+                data = data.apply(lambda x: str(x) if not pd.isnull(x) else None, convert_dtype=False)
+            else:
+                data = data.astype(str)
         data = data.str.strip() if self.trim_whitespace else data
         if (data == '').any() and not self.allow_blank:
             self.fail('blank')
         return data.str.strip() if self.trim_whitespace else data
 
     def to_representation(self, value):
-        return value.astype(str)
+        return value
 
 
 class DateField(Field):
@@ -199,12 +206,14 @@ class DateField(Field):
         assert self.format is not serializers.empty, '`format` is required for date column'
         super().__init__(**kwargs)
 
-    def to_internal_value(self, value):
+    def to_internal_value(self, data):
         try:
-            value = pd.to_datetime(value, format=self.format, errors='raise').dt.date
+            data = pd.to_datetime(data, format=self.format, errors='raise').dt.date
+            if self.allow_null:
+                data = data.apply(lambda x: x if not pd.isnull(x) else None, convert_dtype=False)
         except ValueError:
             self.fail('invalid', format=self.format)
-        return value
+        return data
 
     def to_representation(self, value):
         return value.apply(lambda x: x.strftime(self.format) if not pd.isnull(x) else x)
@@ -221,12 +230,14 @@ class DateTimeField(Field):
         assert self.format is not serializers.empty, '`format` is required for datetime column'
         super().__init__(**kwargs)
 
-    def to_internal_value(self, value):
+    def to_internal_value(self, data):
         try:
-            value = pd.to_datetime(value, format=self.format, errors='raise')
+            data = pd.to_datetime(data, format=self.format, errors='raise')
+            if self.allow_null:
+                data = data.apply(lambda x: x if not pd.isnull(x) else None, convert_dtype=False)
         except ValueError:
             self.fail('invalid', format=self.format)
-        return value
+        return data
 
     def to_representation(self, value):
         return value.apply(lambda x: x.strftime(self.format) if not pd.isnull(x) else x)
