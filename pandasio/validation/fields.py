@@ -59,7 +59,7 @@ class Field(serializers.Field):
             # the field is passed the entire object, which is not null.
             elif self.source == '*':
                 return False, column
-            return True, column
+            return column.isnull().all(), column
 
         return False, column
 
