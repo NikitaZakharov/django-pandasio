@@ -1,7 +1,7 @@
 import pandas as pd
 
 from rest_framework import serializers
-from rest_framework.utils.formatting import lazy_format
+from django.utils.functional import lazy
 
 from pandasio.validation import validators
 
@@ -78,12 +78,12 @@ class IntegerField(Field):
         self.min_value = kwargs.pop('min_value', None)
         super().__init__(**kwargs)
         if self.max_value is not None:
-            message = lazy_format(self.error_messages['max_value'], max_value=self.max_value)
+            message = lazy(self.error_messages['max_value'], max_value=self.max_value)
             self.validators.append(
                 validators.MaxValueValidator(self.max_value, message=message)
             )
         if self.min_value is not None:
-            message = lazy_format(self.error_messages['min_value'], min_value=self.min_value)
+            message = lazy(self.error_messages['min_value'], min_value=self.min_value)
             self.validators.append(
                 validators.MinValueValidator(self.min_value, message=message)
             )
@@ -170,12 +170,12 @@ class CharField(Field):
         self.min_length = kwargs.pop('min_length', None)
         super().__init__(**kwargs)
         if self.max_length is not None:
-            message = lazy_format(self.error_messages['max_length'], max_length=self.max_length)
+            message = lazy(self.error_messages['max_length'], max_length=self.max_length)
             self.validators.append(
                 validators.MaxLengthValidator(self.max_length, message=message)
             )
         if self.min_length is not None:
-            message = lazy_format(self.error_messages['min_length'], min_length=self.min_length)
+            message = lazy(self.error_messages['min_length'], min_length=self.min_length)
             self.validators.append(
                 validators.MinLengthValidator(self.min_length, message=message)
             )
