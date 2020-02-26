@@ -5,7 +5,7 @@ def get_name_field_mapping(model):
 def get_field_name(field):
     if field.is_relation:
         return field.name + "_id"
-    return field.name
+    return field.name if not field.db_column else field.db_column
 
 
 def get_unique_fields(model):
