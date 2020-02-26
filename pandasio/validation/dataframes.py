@@ -95,6 +95,43 @@ class DataFrameSerializer(serializers.Serializer):
 
         return not bool(self._errors)
 
+    def run_validation(self, data):
+        (is_empty_value, data) = self.validate_empty_values(data)
+        if is_empty_value:
+            return data
+
+        data = self.to_internal_value(data)
+        try:
+            self.run_validators(data)
+            data = self.validate(data)
+            assert data is not None, '.validate() should return the validated data'
+        except (ValidationError, DjangoValidationError) as exc:
+            raise ValidationError(detail=serializers.as_serializer_error(exc))
+
+        return data
+
+    def run_validators(self, data):
+        errors = []
+        for validator in self.validators:
+            if hasattr(validator, 'set_context'):
+                validator.set_context(self)
+            try:
+                if getattr(validator, 'requires_context', False):
+                    validator(data, self)
+                else:
+                    validator(data)
+            except ValidationError as exc:
+                # If the validation error contains a mapping of fields to
+                # errors then simply raise it immediately rather than
+                # attempting to accumulate a list of errors.
+                if isinstance(exc.detail, dict):
+                    raise
+                errors.extend(exc.detail)
+            except DjangoValidationError as exc:
+                errors.extend(get_error_detail(exc))
+        if errors:
+            raise ValidationError(errors)
+
     def save(self, using='default'):
         connection = connections[using]
         backend_module = get_dataframe_saver_backend(connection.settings_dict['ENGINE'])

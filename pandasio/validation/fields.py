@@ -1,14 +1,18 @@
+import copy
+import inspect
+from collections import OrderedDict
+
 import pandas as pd
 
 from rest_framework import serializers
-from django.utils.functional import lazy
 
 from pandasio.validation import validators
 
 __all__ = [
     'Empty', 'Field',
     'IntegerField', 'BooleanField', 'NullBooleanField',
-    'FloatField', 'CharField', 'DateField', 'DateTimeField'
+    'FloatField', 'CharField', 'DateField', 'DateTimeField',
+    'ListField'
 ]
 
 
@@ -64,6 +68,20 @@ class Field(serializers.Field):
         return False, column
 
 
+class _UnvalidatedField(Field):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.allow_blank = True
+        self.allow_null = True
+
+    def to_internal_value(self, data):
+        return data
+
+    def to_representation(self, value):
+        return value
+
+
 class IntegerField(Field):
 
     default_error_messages = {
@@ -78,12 +96,12 @@ class IntegerField(Field):
         self.min_value = kwargs.pop('min_value', None)
         super().__init__(**kwargs)
         if self.max_value is not None:
-            message = lazy(self.error_messages['max_value'], max_value=self.max_value)
+            message = self.error_messages['max_value'].format(max_value=self.max_value)
             self.validators.append(
                 validators.MaxValueValidator(self.max_value, message=message)
             )
         if self.min_value is not None:
-            message = lazy(self.error_messages['min_value'], min_value=self.min_value)
+            message = self.error_messages['min_value'].format(min_value=self.min_value)
             self.validators.append(
                 validators.MinValueValidator(self.min_value, message=message)
             )
@@ -170,12 +188,12 @@ class CharField(Field):
         self.min_length = kwargs.pop('min_length', None)
         super().__init__(**kwargs)
         if self.max_length is not None:
-            message = lazy(self.error_messages['max_length'], max_length=self.max_length)
+            message = self.error_messages['max_length'].format(max_length=self.max_length)
             self.validators.append(
                 validators.MaxLengthValidator(self.max_length, message=message)
             )
         if self.min_length is not None:
-            message = lazy(self.error_messages['min_length'], min_length=self.min_length)
+            message = self.error_messages['min_length'].format(min_length=self.min_length)
             self.validators.append(
                 validators.MinLengthValidator(self.min_length, message=message)
             )
@@ -241,4 +259,67 @@ class DateTimeField(Field):
 
     def to_representation(self, value):
         return value.apply(lambda x: x.strftime(self.format) if not pd.isnull(x) else x)
+
+
+class ListField(Field):
+
+    child = _UnvalidatedField()
+
+    default_error_messages = {
+        'not_a_list': 'Ensure column values are `list` type',
+        'empty': 'Column values cannot contain empty lists',
+        'min_length': 'Ensure column values have at least {min_length} elements.',
+        'max_length': 'Ensure column values have no more than {max_length} elements.'
+    }
+
+    def __init__(self, *args, **kwargs):
+        self.child = kwargs.pop('child', copy.deepcopy(self.child))
+        self.allow_empty = kwargs.pop('allow_empty', True)
+        self.max_length = kwargs.pop('max_length', None)
+        self.min_length = kwargs.pop('min_length', None)
+
+        assert not inspect.isclass(self.child), '`child` has not been instantiated.'
+        assert self.child.source is None, (
+            "The `source` argument is not meaningful when applied to a `child=` field. "
+            "Remove `source=` from the field declaration."
+        )
+
+        super().__init__(*args, **kwargs)
+        self.child.bind(field_name='', parent=self)
+        if self.max_length is not None:
+            message = self.error_messages['max_length'].format(max_length=self.max_length)
+            self.validators.append(validators.MaxLengthValidator(self.max_length, message=message))
+        if self.min_length is not None:
+            message = self.error_messages['min_length'].format(min_length=self.min_length)
+            self.validators.append(validators.MinLengthValidator(self.min_length, message=message))
+
+    def to_internal_value(self, data):
+        if not self.allow_empty and not data.str.len().all():
+            self.fail('empty')
+        if not data.apply(lambda x: isinstance(x, list) or (self.allow_null and x is None)).all():
+            self.fail('not_a_list')
+        return self.run_child_validation(data)
+
+    def to_representation(self, data):
+        return pd.Series([self.child.to_representation(lst) if lst is not None else None for lst in data])
+
+    def run_child_validation(self, data):
+        errors = OrderedDict()
+
+        def validate(child, i):
+            if not isinstance(child, list) and self.allow_null:
+                return None
+            try:
+                i += 1
+                return list(self.child.run_validation(pd.Series(child)))
+            except serializers.ValidationError as e:
+                errors[i] = e.detail
+
+        idx = -1
+        data = data.apply(lambda x: validate(x, idx))
+
+        if not errors:
+            return data
+
+        raise serializers.ValidationError(errors)
 
