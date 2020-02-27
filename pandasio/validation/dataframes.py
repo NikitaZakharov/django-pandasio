@@ -14,50 +14,39 @@ from rest_framework.utils import representation
 from rest_framework.fields import SkipField
 
 from pandasio.db.utils import get_dataframe_saver_backend
+from pandasio.validation.base import BasePandasValidator
 
 
 ALL_FIELDS = '__all__'
 
 
-class DataFrameSerializer(serializers.Serializer):
+class DataFrameValidator(BasePandasValidator):
 
     default_error_messages = {
         'invalid': 'Invalid data. Expected a dataframe, but got {datatype}'
     }
 
-    def to_internal_value(self, data):
-        """
-        DataFrame of native values <- DataFrame of primitive datatypes.
-        """
-        if not isinstance(data, pd.DataFrame):
-            message = self.error_messages['invalid'].format(
-                datatype=type(data).__name__
-            )
-            raise ValidationError({
-                api_settings.NON_FIELD_ERRORS_KEY: [message]
-            }, code='invalid')
-
+    def run_columns_validation(self, data):
         ret = pd.DataFrame()
         errors = OrderedDict()
-        fields = self._writable_fields
 
-        for field in fields:
-            validate_method = getattr(self, 'validate_' + field.field_name, None)
-            primitive_value = field.get_value(data)
+        for column in self._columns:
+            validate_method = getattr(self, 'validate_' + column.column_name, None)
+            column_data = data[column.source_attrs[0]]
             try:
-                validated_value = field.run_validation(primitive_value)
+                validated_column_data = column.run_validation(column_data)
                 if validate_method is not None:
-                    validated_value = validate_method(validated_value)
+                    validated_column_data = validate_method(validated_column_data)
             except ValidationError as exc:
-                errors[field.field_name] = exc.detail
+                errors[column.column_name] = exc.detail
             except DjangoValidationError as exc:
-                errors[field.field_name] = get_error_detail(exc)
+                errors[column.column_name] = get_error_detail(exc)
             except SkipField:
                 pass
             else:
-                if len(field.source_attrs) > 1:
+                if len(column.source_attrs) > 1:
                     raise NotImplemented('Nested `source` is not implemented')
-                ret[field.source_attrs[0]] = validated_value
+                ret[column.source_attrs[0]] = validated_column_data
                 # set_value(ret, field.source_attrs, validated_value)
 
         if errors:
@@ -65,22 +54,7 @@ class DataFrameSerializer(serializers.Serializer):
 
         return ret
 
-    def to_representation(self, instance):
-        raise NotImplemented('`to_representation()` not implemented for `DataFrameSerializer`')
-
     def is_valid(self, raise_exception=False):
-        assert not hasattr(self, 'restore_object'), (
-            'Serializer `%s.%s` has old-style version 2 `.restore_object()` '
-            'that is no longer compatible with REST framework 3. '
-            'Use the new-style `.create()` and `.update()` methods instead.' %
-            (self.__class__.__module__, self.__class__.__name__)
-        )
-
-        assert hasattr(self, 'initial_data'), (
-            'Cannot call `.is_valid()` as no `data=` keyword argument was '
-            'passed when instantiating the serializer instance.'
-        )
-
         if not hasattr(self, '_validated_data'):
             try:
                 self._validated_data = self.run_validation(self.initial_data)

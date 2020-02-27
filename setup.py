@@ -3,7 +3,7 @@ try:
 except ImportError:
     from distutils.core import setup, Extension
 
-VERSION = "0.1alpha"
+VERSION = "0.2alpha"
 
 setup(
    name="django-pandasio",
@@ -13,5 +13,5 @@ setup(
    platforms=["any"],
    packages=['pandasio', 'pandasio.db', 'pandasio.validation'],
    package_dir={'pandasio': 'pandasio'},
-   install_requires=["six", "pandas", "django", "django-rest-framework"],
+   install_requires=["pandas==1.0.1"],
 )
