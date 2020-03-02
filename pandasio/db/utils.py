@@ -10,6 +10,8 @@ def get_field_name(field):
 
 def get_unique_fields(model):
     unique_fields = model._meta.unique_together
+    if not unique_fields:
+        return []
     unique_fields = unique_fields if not isinstance(unique_fields[0], (list, tuple)) else unique_fields[0]
     name_field_mapping = get_name_field_mapping(model)
     return [name_field_mapping[field_name] for field_name in unique_fields]

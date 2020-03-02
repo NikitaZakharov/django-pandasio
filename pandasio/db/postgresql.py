@@ -16,29 +16,37 @@ class DataFrameDatabaseSaver(BaseDataFrameDatabaseSaver):
             self._cursor.copy_from(file=buffer, table=model._meta.db_table, columns=dataframe.columns, null='')
             self._connection.commit()
         except Exception as e:
-            print(e)
             self._connection.rollback()
+            print(e)
             self.upsert(dataframe=dataframe, model=model)
 
     def upsert(self, dataframe, model, returning_columns=None):
+        unique_field_names = get_unique_field_names(model)
         upsert_clause = get_upsert_clause_sql(model)
-        do_statement = 'DO UPDATE SET %s ' % upsert_clause if upsert_clause else 'DO NOTHING '
+
+        insert_statement = """
+            INSERT INTO %(table)s (%(columns)s)
+            VALUES %(values)s
+        """ % {
+            'table': model._meta.db_table,
+            'columns': ','.join(dataframe.columns),
+            'values': get_insert_values_sql(self._cursor, dataframe.to_dict('split')['data'])
+        }
+
+        conflict_statement = """
+            ON CONFLICT (%(unique_columns)s)
+            %(do_statement)s
+        """ % {
+            'unique_columns': ', '.join(unique_field_names),
+            'do_statement': 'DO UPDATE SET %s ' % upsert_clause if upsert_clause else 'DO NOTHING '
+        } if unique_field_names else ''
+
         returning_statement = ('RETURNING %s' % ', '.join(returning_columns)) if returning_columns else ''
+
+        query = insert_statement + conflict_statement + returning_statement
+
         try:
-            self._cursor.execute(
-                'INSERT INTO %(table)s (%(columns)s) '
-                'VALUES %(values)s '
-                'ON CONFLICT (%(unique_columns)s) '
-                '%(do_statement)s '
-                '%(returning_statement)s' % {
-                    'table': model._meta.db_table,
-                    'columns': ','.join(dataframe.columns),
-                    'values': get_insert_values_sql(self._cursor, dataframe.to_dict('split')['data']),
-                    'unique_columns': ', '.join(get_unique_field_names(model)),
-                    'do_statement': do_statement,
-                    'returning_statement': returning_statement
-                }
-            )
+            self._cursor.execute(query)
             self._connection.commit()
             if returning_columns:
                 return self._cursor.fetchall()
