@@ -30,7 +30,7 @@ def get_model_field_names(model):
 
 
 def get_manage_field_names():
-    return {'id', 'api_updated', 'api_changed', 'client_id'}
+    return {'id'}
 
 
 def get_upsert_clause_sql(model):
