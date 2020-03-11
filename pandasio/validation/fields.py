@@ -200,8 +200,8 @@ class CharField(Field):
 
     def to_internal_value(self, data):
         if data.dtype != object:
-            if self.allow_null:
-                data = data.apply(lambda x: str(x) if not pd.isnull(x) else None, convert_dtype=False)
+            if self.allow_null and data.dtype == float:
+                data = data.apply(lambda x: str(int(x)) if x.is_integer() else str(x) if not pd.isnull(x) else None)
             else:
                 data = data.astype(str)
         data = data.str.strip() if self.trim_whitespace else data
