@@ -207,7 +207,7 @@ class CharField(Field):
         data = data.str.strip() if self.trim_whitespace else data
         if (data == '').any() and not self.allow_blank:
             self.fail('blank')
-        return data.str.strip() if self.trim_whitespace else data
+        return data
 
     def to_representation(self, value):
         return value
