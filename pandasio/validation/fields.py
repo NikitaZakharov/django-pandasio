@@ -226,7 +226,7 @@ class DateField(Field):
 
     def to_internal_value(self, data):
         try:
-            data = pd.to_datetime(data, format=self.format, errors='raise').dt.date
+            data = pd.to_datetime(data, format=self.format, errors='coerce' if self.allow_null else 'raise').dt.date
             if self.allow_null:
                 data = data.apply(lambda x: x if not pd.isnull(x) else None, convert_dtype=False)
         except ValueError:
