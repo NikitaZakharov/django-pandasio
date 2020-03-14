@@ -7,6 +7,8 @@ from pandasio.db.utils import get_unique_field_names, get_upsert_clause_sql, get
 class DataFrameDatabaseSaver(BaseDataFrameDatabaseSaver):
 
     def save(self, dataframe, model, returning_columns=None):
+        if dataframe.empty:
+            return
         if returning_columns is not None:
             return self.upsert(dataframe=dataframe, model=model, returning_columns=returning_columns)
         buffer = io.StringIO()
