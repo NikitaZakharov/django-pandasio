@@ -23,6 +23,8 @@ class DataFrameDatabaseSaver(BaseDataFrameDatabaseSaver):
             self.upsert(dataframe=dataframe, model=model)
 
     def upsert(self, dataframe, model, returning_columns=None):
+        if dataframe.empty:
+            return
         unique_field_names = get_unique_field_names(model)
         upsert_clause = get_upsert_clause_sql(model)
 
