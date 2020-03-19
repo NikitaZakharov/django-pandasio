@@ -204,6 +204,11 @@ class CharField(Field):
                 data = data.apply(lambda x: str(int(x)) if x.is_integer() else str(x) if not pd.isnull(x) else None)
             else:
                 data = data.astype(str)
+        else:
+            if self.allow_null:
+                data = data.apply(lambda x: str(x) if not pd.isnull(x) else None)
+            else:
+                data = data.astype(str)
         data = data.str.strip() if self.trim_whitespace else data
         if (data == '').any() and not self.allow_blank:
             self.fail('blank')
