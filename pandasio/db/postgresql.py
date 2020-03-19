@@ -8,7 +8,7 @@ class DataFrameDatabaseSaver(BaseDataFrameDatabaseSaver):
 
     def save(self, dataframe, model, returning_columns=None):
         if dataframe.empty:
-            return
+            return [] if returning_columns else None
         if returning_columns is not None:
             return self.upsert(dataframe=dataframe, model=model, returning_columns=returning_columns)
         buffer = io.StringIO()
@@ -24,7 +24,7 @@ class DataFrameDatabaseSaver(BaseDataFrameDatabaseSaver):
 
     def upsert(self, dataframe, model, returning_columns=None):
         if dataframe.empty:
-            return
+            return [] if returning_columns else None
         unique_field_names = get_unique_field_names(model)
         upsert_clause = get_upsert_clause_sql(model)
 
