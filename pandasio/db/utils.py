@@ -33,10 +33,10 @@ def get_manage_field_names():
     return {'id'}
 
 
-def get_upsert_clause_sql(model):
-    model_fields = get_model_field_names(model)
-    upsert_fields = set(model_fields) - (set(get_unique_field_names(model)) | set(get_manage_field_names()))
-    return ', '.join(['"%(field)s" = EXCLUDED."%(field)s"' % {'field': field} for field in upsert_fields])
+def get_upsert_clause_sql(model, columns=None):
+    columns = columns or get_model_field_names(model)
+    upsert_columns = set(columns) - (set(get_unique_field_names(model)) | set(get_manage_field_names()))
+    return ', '.join(['"%(col)s" = EXCLUDED."%(col)s"' % {'col': col} for col in upsert_columns])
 
 
 def get_pk_column(model):

@@ -25,15 +25,17 @@ class DataFrameDatabaseSaver(BaseDataFrameDatabaseSaver):
     def upsert(self, dataframe, model, returning_columns=None):
         if dataframe.empty:
             return [] if returning_columns else None
-        unique_field_names = get_unique_field_names(model)
-        upsert_clause = get_upsert_clause_sql(model)
+
+        columns = list(dataframe.columns)
+        unique_columns = get_unique_field_names(model)
+        upsert_clause = get_upsert_clause_sql(model, columns=columns)
 
         insert_statement = """
             INSERT INTO %(table)s (%(columns)s)
             VALUES %(values)s
         """ % {
             'table': model._meta.db_table,
-            'columns': ','.join(dataframe.columns),
+            'columns': ','.join(columns),
             'values': get_insert_values_sql(self._cursor, dataframe.to_dict('split')['data'])
         }
 
@@ -41,9 +43,9 @@ class DataFrameDatabaseSaver(BaseDataFrameDatabaseSaver):
             ON CONFLICT (%(unique_columns)s)
             %(do_statement)s
         """ % {
-            'unique_columns': ', '.join(unique_field_names),
+            'unique_columns': ', '.join(unique_columns),
             'do_statement': 'DO UPDATE SET %s ' % upsert_clause if upsert_clause else 'DO NOTHING '
-        } if unique_field_names else ''
+        } if unique_columns else ''
 
         returning_statement = ('RETURNING %s' % ', '.join(returning_columns)) if returning_columns else ''
 
