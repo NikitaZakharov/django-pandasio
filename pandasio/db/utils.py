@@ -17,8 +17,11 @@ def get_unique_fields(model):
     return [name_field_mapping[field_name] for field_name in unique_fields]
 
 
-def get_unique_field_names(model):
-    return [get_field_name(field) for field in get_unique_fields(model)]
+def get_unique_field_names(model, null_field_expr='COALESCE(%s, -1)'):
+    return [
+        ('%s' if not field.null else null_field_expr) % get_field_name(field)
+        for field in get_unique_fields(model)
+    ]
 
 
 def get_model_fields(model):
