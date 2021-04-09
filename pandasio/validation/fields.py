@@ -7,6 +7,7 @@ import pandas as pd
 from rest_framework import serializers
 
 from pandasio.validation import validators
+from pandasio.validation.errors import ValidationTypeError
 
 __all__ = [
     'Empty', 'Field',
@@ -33,6 +34,28 @@ class Field(serializers.Field):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+    def to_type(self, data):
+        return data
+
+    def get_failure_cases(self, data):
+        valid_data = self.to_type(data)
+        invalid_data = []
+
+        if valid_data.size != data.size:
+            invalid_data.append(data[~data.index.isin(valid_data.index)])
+
+        invalid_data += [x.get_invalid_data(valid_data) for x in self.validators]
+
+        if invalid_data:
+            return pd.concat(invalid_data)
+        return None
+
+    def to_internal_value(self, data):
+        valid_data = self.to_type(data)
+        if valid_data.size != data.size:
+            raise ValidationTypeError(code='invalid')
+        return valid_data
 
     def validate_empty_values(self, column):
         """
@@ -106,7 +129,7 @@ class IntegerField(Field):
                 validators.MinValueValidator(self.min_value, message=message)
             )
 
-    def to_internal_value(self, data):
+    def to_type(self, data):
         if data.dtype == int:
             return data
 
@@ -116,7 +139,16 @@ class IntegerField(Field):
             else:
                 data = data.astype(int)
         except ValueError:
-            self.fail('invalid')
+            def is_valid_element(el):
+                try:
+                    if self.allow_null and pd.isnull(el):
+                        return True
+                    int(el)
+                    return True
+                except ValueError:
+                    return False
+
+            return data[data.apply(lambda x: is_valid_element(x))].astype(int)
         except OverflowError:
             self.fail('overflow')
 
@@ -128,10 +160,13 @@ class IntegerField(Field):
 
 class BooleanField(Field):
 
-    def to_internal_value(self, data):
+    def to_type(self, data):
         if data.dtype == bool:
             return data
         return data.astype(bool)
+
+    def to_internal_value(self, data):
+        return self.to_type(data)
 
     def to_representation(self, value):
         return value
@@ -144,8 +179,13 @@ class NullBooleanField(Field):
         kwargs['allow_null'] = True
         super().__init__(**kwargs)
 
-    def to_internal_value(self, data):
+    def to_type(self, data):
+        if data.dtype == bool:
+            return data
         return data.apply(lambda x: bool(x) if not pd.isnull(x) else None, convert_dtype=False)
+
+    def to_internal_value(self, data):
+        return self.to_type(data)
 
     def to_representation(self, value):
         return value
@@ -153,8 +193,8 @@ class NullBooleanField(Field):
 
 class FloatField(IntegerField):
 
-    def to_internal_value(self, data):
-        if data.dtype == float and not self.allow_null:
+    def to_type(self, data):
+        if data.dtype == float:
             return data
 
         try:
@@ -163,7 +203,15 @@ class FloatField(IntegerField):
             else:
                 data = data.astype(float)
         except ValueError:
-            self.fail('invalid')
+            def is_valid_element(el):
+                try:
+                    if self.allow_null and pd.isnull(el):
+                        return True
+                    float(el)
+                    return True
+                except ValueError:
+                    return False
+            return data[data.apply(lambda x: is_valid_element(x))].astype(float)
 
         return data
 
@@ -198,7 +246,7 @@ class CharField(Field):
                 validators.MinLengthValidator(self.min_length, message=message)
             )
 
-    def to_internal_value(self, data):
+    def to_type(self, data):
         if data.dtype != object:
             if self.allow_null and data.dtype == float:
                 data = data.apply(lambda x: str(int(x)) if x.is_integer() else str(x) if not pd.isnull(x) else None)
@@ -211,8 +259,14 @@ class CharField(Field):
                 data = data.astype(str)
         data = data.str.strip() if self.trim_whitespace else data
         if (data == '').any() and not self.allow_blank:
-            self.fail('blank')
+            return data[data != '']
         return data
+
+    def to_internal_value(self, data):
+        valid_data = self.to_type(data)
+        if valid_data.size != data.size:
+            raise ValidationTypeError(code='blank')
+        return valid_data
 
     def to_representation(self, value):
         return value
@@ -229,13 +283,14 @@ class DateField(Field):
         assert self.format is not serializers.empty, '`format` is required for date column'
         super().__init__(**kwargs)
 
-    def to_internal_value(self, data):
+    def to_type(self, data):
         try:
             data = pd.to_datetime(data, format=self.format, errors='coerce' if self.allow_null else 'raise').dt.date
             if self.allow_null:
                 data = data.apply(lambda x: x if not pd.isnull(x) else None, convert_dtype=False)
         except ValueError:
-            self.fail('invalid', format=self.format)
+            series = pd.to_datetime(data, format=self.format, errors='coerce').dt.date
+            return series[series.notna()]
         return data
 
     def to_representation(self, value):
@@ -253,13 +308,14 @@ class DateTimeField(Field):
         assert self.format is not serializers.empty, '`format` is required for datetime column'
         super().__init__(**kwargs)
 
-    def to_internal_value(self, data):
+    def to_type(self, data):
         try:
             data = pd.to_datetime(data, format=self.format, errors='raise')
             if self.allow_null:
                 data = data.apply(lambda x: x if not pd.isnull(x) else None, convert_dtype=False)
         except ValueError:
-            self.fail('invalid', format=self.format)
+            series = pd.to_datetime(data, format=self.format, errors='coerce')
+            return series[series.notna()]
         return data
 
     def to_representation(self, value):

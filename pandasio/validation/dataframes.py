@@ -14,7 +14,7 @@ from rest_framework.utils import representation
 from rest_framework.fields import SkipField
 
 from pandasio.db.utils import get_dataframe_saver_backend
-
+from pandasio.validation.errors import ValidationTypeError
 
 ALL_FIELDS = '__all__'
 
@@ -24,6 +24,14 @@ class DataFrameSerializer(serializers.Serializer):
     default_error_messages = {
         'invalid': 'Invalid data. Expected a dataframe, but got {datatype}'
     }
+
+    @property
+    def failure_cases(self):
+        field_cases = [field.get_failure_cases(field.get_value(self.initial_data)) for field in self._writable_fields]
+        validator_cases = [validator.get_invalid_data(self.initial_data) for validator in self.validators]
+        first_df = pd.concat(field_cases, axis=1)
+        second_df = pd.concat(validator_cases, axis=0)
+        return first_df.combine_first(second_df).reset_index()
 
     def to_internal_value(self, data):
         """
@@ -48,6 +56,9 @@ class DataFrameSerializer(serializers.Serializer):
                 validated_value = field.run_validation(primitive_value)
                 if validate_method is not None:
                     validated_value = validate_method(validated_value)
+            except ValidationTypeError as exc:
+                errors[field.field_name] = exc.detail
+                raise ValidationTypeError(errors)
             except ValidationError as exc:
                 errors[field.field_name] = exc.detail
             except DjangoValidationError as exc:
@@ -84,6 +95,10 @@ class DataFrameSerializer(serializers.Serializer):
         if not hasattr(self, '_validated_data'):
             try:
                 self._validated_data = self.run_validation(self.initial_data)
+            except ValidationTypeError as exc:
+                self._validated_data = pd.DataFrame()
+                if raise_exception:
+                    raise ValidationTypeError(exc.detail)
             except ValidationError as exc:
                 self._validated_data = pd.DataFrame()
                 self._errors = exc.detail
