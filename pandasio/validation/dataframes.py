@@ -1,5 +1,5 @@
 from importlib import import_module
-from collections import OrderedDict
+from collections import defaultdict
 
 import pandas as pd
 
@@ -8,13 +8,12 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-from rest_framework.fields import get_error_detail
+from rest_framework.fields import get_error_detail, SkipField
 from rest_framework.settings import api_settings
 from rest_framework.utils import representation
-from rest_framework.fields import SkipField
+from rest_framework.fields import MISSING_ERROR_MESSAGE
 
 from pandasio.db.utils import get_dataframe_saver_backend
-from pandasio.validation.errors import ValidationTypeError
 
 ALL_FIELDS = '__all__'
 
@@ -25,13 +24,18 @@ class DataFrameSerializer(serializers.Serializer):
         'invalid': 'Invalid data. Expected a dataframe, but got {datatype}'
     }
 
-    @property
-    def failure_cases(self):
-        field_cases = [field.get_failure_cases(field.get_value(self.initial_data)) for field in self._writable_fields]
-        validator_cases = [validator.get_invalid_data(self.initial_data) for validator in self.validators]
-        first_df = pd.concat(field_cases, axis=1)
-        second_df = pd.concat(validator_cases, axis=0)
-        return first_df.combine_first(second_df).reset_index()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._errors = defaultdict(list)
+
+    def fail(self, key, **kwargs):
+        try:
+            msg = self.error_messages[key].format(**kwargs)
+        except KeyError:
+            class_name = self.__class__.__name__
+            msg = MISSING_ERROR_MESSAGE.format(class_name=class_name, key=key)
+        self._errors[key].append(msg)
 
     def to_internal_value(self, data):
         """
@@ -46,8 +50,8 @@ class DataFrameSerializer(serializers.Serializer):
             }, code='invalid')
 
         ret = pd.DataFrame()
-        errors = OrderedDict()
         fields = self._writable_fields
+        df_valid = True
 
         for field in fields:
             validate_method = getattr(self, 'validate_' + field.field_name, None)
@@ -56,25 +60,32 @@ class DataFrameSerializer(serializers.Serializer):
                 validated_value = field.run_validation(primitive_value)
                 if validate_method is not None:
                     validated_value = validate_method(validated_value)
-            except ValidationTypeError as exc:
-                errors[field.field_name] = exc.detail
-                raise ValidationTypeError(errors)
-            except ValidationError as exc:
-                errors[field.field_name] = exc.detail
-            except DjangoValidationError as exc:
-                errors[field.field_name] = get_error_detail(exc)
+
+                if validated_value.empty:
+                    df_valid = False
+
+                is_not_valid = not (self.initial_data.shape[0] == validated_value.size == ret.shape[0])
+
+                if df_valid and not ret.empty and is_not_valid:
+                    ret = ret.join(validated_value.to_frame(field.source_attrs[0]), how='inner')
+                else:
+                    ret[field.source_attrs[0]] = validated_value
+
+                # if (ret.empty and not self._errors) or ret.shape[0] == validated_value.size:
+                #     ret[field.source_attrs[0]] = validated_value
+                # else:
+                #     ret = ret.join(validated_value.to_frame(field.source_attrs[0]), how='inner')
+
             except SkipField:
-                pass
-            else:
-                if len(field.source_attrs) > 1:
-                    raise NotImplemented('Nested `source` is not implemented')
-                ret[field.source_attrs[0]] = validated_value
-                # set_value(ret, field.source_attrs, validated_value)
+                df_valid = False
+                self._errors[field.field_name] = field.errors
 
-        if errors:
-            raise ValidationError(errors)
+            if field.errors:
+                self._errors[field.field_name] = field.errors
 
-        return ret
+        if df_valid:
+            return ret
+        return pd.DataFrame()
 
     def to_representation(self, instance):
         raise NotImplemented('`to_representation()` not implemented for `DataFrameSerializer`')
@@ -95,18 +106,12 @@ class DataFrameSerializer(serializers.Serializer):
         if not hasattr(self, '_validated_data'):
             try:
                 self._validated_data = self.run_validation(self.initial_data)
-            except ValidationTypeError as exc:
-                self._validated_data = pd.DataFrame()
-                if raise_exception:
-                    raise ValidationTypeError(exc.detail)
             except ValidationError as exc:
                 self._validated_data = pd.DataFrame()
-                self._errors = exc.detail
-            else:
-                self._errors = {}
+                self._errors[api_settings.NON_FIELD_ERRORS_KEY] = exc.detail
 
         if self._errors and raise_exception:
-            raise ValidationError(self.errors)
+            raise ValidationError(self._errors)
 
         return not bool(self._errors)
 
@@ -117,7 +122,7 @@ class DataFrameSerializer(serializers.Serializer):
 
         data = self.to_internal_value(data)
         try:
-            self.run_validators(data)
+            data = self.run_validators(data)
             data = self.validate(data)
             assert data is not None, '.validate() should return the validated data'
         except (ValidationError, DjangoValidationError) as exc:
@@ -126,7 +131,6 @@ class DataFrameSerializer(serializers.Serializer):
         return data
 
     def run_validators(self, data):
-        errors = []
         for validator in self.validators:
             if hasattr(validator, 'set_context'):
                 validator.set_context(self)
@@ -141,11 +145,12 @@ class DataFrameSerializer(serializers.Serializer):
                 # attempting to accumulate a list of errors.
                 if isinstance(exc.detail, dict):
                     raise
-                errors.extend(exc.detail)
+                data = validator.get_valid_data(data)
+                self._errors[api_settings.NON_FIELD_ERRORS_KEY] = exc.detail
             except DjangoValidationError as exc:
-                errors.extend(get_error_detail(exc))
-        if errors:
-            raise ValidationError(errors)
+                data = validator.get_valid_data(data)
+                self._errors[api_settings.NON_FIELD_ERRORS_KEY] = get_error_detail(exc)
+        return data
 
     def save(self, using='default'):
         connection = connections[using]
