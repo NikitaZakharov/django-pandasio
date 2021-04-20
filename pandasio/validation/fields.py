@@ -71,10 +71,9 @@ class Field(serializers.Field):
             return True, self.get_default()
 
         if column is serializers.empty:
-            if getattr(self.root, 'partial', False):
-                raise serializers.SkipField()
             if self.required:
                 self.fail('required')
+                return True, pd.Series()
             return True, self.get_default()
 
         if column.isnull().any():
@@ -248,7 +247,7 @@ class NullBooleanField(Field):
 class FloatField(IntegerField):
 
     def to_internal_value(self, data):
-        if data.dtype == float:
+        if data.dtype == float and not self.allow_null:
             return data
 
         try:

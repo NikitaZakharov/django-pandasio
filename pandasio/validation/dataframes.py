@@ -11,7 +11,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.fields import get_error_detail, SkipField
 from rest_framework.settings import api_settings
 from rest_framework.utils import representation
-from rest_framework.fields import MISSING_ERROR_MESSAGE
+from rest_framework.fields import MISSING_ERROR_MESSAGE, empty
 
 from pandasio.db.utils import get_dataframe_saver_backend
 
@@ -49,43 +49,43 @@ class DataFrameSerializer(serializers.Serializer):
                 api_settings.NON_FIELD_ERRORS_KEY: [message]
             }, code='invalid')
 
-        ret = pd.DataFrame()
+        ret = self.initial_data[[]]
         fields = self._writable_fields
-        df_valid = True
 
         for field in fields:
             validate_method = getattr(self, 'validate_' + field.field_name, None)
             primitive_value = field.get_value(data)
             try:
                 validated_value = field.run_validation(primitive_value)
+
+                if ret.shape[0] == 0:
+                    raise SkipField()
+
+                if primitive_value is empty and field.required:
+                    ret = pd.DataFrame()
+                    raise SkipField()
+
                 if validate_method is not None:
                     validated_value = validate_method(validated_value)
 
-                if validated_value.empty:
-                    df_valid = False
+                if not isinstance(validated_value, pd.Series):
+                    ret[field.source_attrs[0]] = validated_value
+                    raise SkipField()
 
-                is_not_valid = not (self.initial_data.shape[0] == validated_value.size == ret.shape[0])
+                do_join = not (self.initial_data.shape[0] == validated_value.size == ret.shape[0])
 
-                if df_valid and not ret.empty and is_not_valid:
+                if do_join:
                     ret = ret.join(validated_value.to_frame(field.source_attrs[0]), how='inner')
                 else:
                     ret[field.source_attrs[0]] = validated_value
 
-                # if (ret.empty and not self._errors) or ret.shape[0] == validated_value.size:
-                #     ret[field.source_attrs[0]] = validated_value
-                # else:
-                #     ret = ret.join(validated_value.to_frame(field.source_attrs[0]), how='inner')
-
             except SkipField:
-                df_valid = False
-                self._errors[field.field_name] = field.errors
+                pass
 
             if field.errors:
                 self._errors[field.field_name] = field.errors
 
-        if df_valid:
-            return ret
-        return pd.DataFrame()
+        return ret
 
     def to_representation(self, instance):
         raise NotImplemented('`to_representation()` not implemented for `DataFrameSerializer`')
