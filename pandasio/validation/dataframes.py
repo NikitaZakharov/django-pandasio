@@ -35,7 +35,7 @@ class DataFrameSerializer(serializers.Serializer):
         except KeyError:
             class_name = self.__class__.__name__
             msg = MISSING_ERROR_MESSAGE.format(class_name=class_name, key=key)
-        self._errors[key].append(msg)
+        self._errors[api_settings.NON_FIELD_ERRORS_KEY].append(msg)
 
     def to_internal_value(self, data):
         """
@@ -49,7 +49,7 @@ class DataFrameSerializer(serializers.Serializer):
                 api_settings.NON_FIELD_ERRORS_KEY: [message]
             }, code='invalid')
 
-        ret = self.initial_data[[]]
+        ret = self.initial_data.loc[:, []]
         fields = self._writable_fields
 
         for field in fields:
