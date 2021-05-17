@@ -9,18 +9,17 @@ class DataFrameDatabaseSaver(BaseDataFrameDatabaseSaver):
     def save(self, dataframe, model, returning_columns=None):
         if dataframe.empty:
             return [] if returning_columns else None
-        if returning_columns is not None:
-            return self.upsert(dataframe=dataframe, model=model, returning_columns=returning_columns)
         buffer = io.StringIO()
         dataframe.to_csv(buffer, sep='\t', header=False, index=False)
         buffer.seek(0)
         try:
             self._cursor.copy_from(file=buffer, table=model._meta.db_table, columns=dataframe.columns, null='')
             self._connection.commit()
+            return []
         except Exception as e:
             self._connection.rollback()
             print(e)
-            self.upsert(dataframe=dataframe, model=model)
+            return self.upsert(dataframe=dataframe, model=model, returning_columns=returning_columns)
 
     def upsert(self, dataframe, model, returning_columns=None):
         if dataframe.empty:
