@@ -13,7 +13,8 @@ class DataFrameDatabaseSaver(BaseDataFrameDatabaseSaver):
         dataframe.to_csv(buffer, sep='\t', header=False, index=False)
         buffer.seek(0)
         try:
-            self._cursor.copy_from(file=buffer, table=model._meta.db_table, columns=dataframe.columns, null='')
+            with self._connection.cursor() as cursor:
+                cursor.copy_from(file=buffer, table=model._meta.db_table, columns=dataframe.columns, null='')
             self._connection.commit()
             return []
         except Exception as e:
@@ -29,15 +30,6 @@ class DataFrameDatabaseSaver(BaseDataFrameDatabaseSaver):
         unique_columns = get_unique_field_names(model)
         upsert_clause = get_upsert_clause_sql(model, columns=columns)
 
-        insert_statement = """
-            INSERT INTO %(table)s (%(columns)s)
-            VALUES %(values)s
-        """ % {
-            'table': model._meta.db_table,
-            'columns': ','.join(columns),
-            'values': get_insert_values_sql(self._cursor, dataframe.to_dict('split')['data'])
-        }
-
         conflict_statement = """
             ON CONFLICT (%(unique_columns)s)
             %(do_statement)s
@@ -48,14 +40,24 @@ class DataFrameDatabaseSaver(BaseDataFrameDatabaseSaver):
 
         returning_statement = ('RETURNING %s' % ', '.join(returning_columns)) if returning_columns else ''
 
-        query = insert_statement + conflict_statement + returning_statement
+        with self._connection.cursor() as cursor:
+            insert_statement = """
+                INSERT INTO %(table)s (%(columns)s)
+                VALUES %(values)s
+            """ % {
+                'table': model._meta.db_table,
+                'columns': ','.join(columns),
+                'values': get_insert_values_sql(cursor, dataframe.to_dict('split')['data'])
+            }
 
-        try:
-            self._cursor.execute(query)
-            self._connection.commit()
-            if returning_columns:
-                return self._cursor.fetchall()
-        except Exception as e:
-            print(e)
-            self._connection.rollback()
-            raise e
+            query = insert_statement + conflict_statement + returning_statement
+
+            try:
+                cursor.execute(query)
+                self._connection.commit()
+                if returning_columns:
+                    return cursor.fetchall()
+            except Exception as e:
+                print(e)
+                self._connection.rollback()
+                raise e
