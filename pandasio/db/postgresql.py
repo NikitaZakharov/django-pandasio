@@ -16,7 +16,7 @@ class DataFrameDatabaseSaver(BaseDataFrameDatabaseSaver):
             with self._connection.cursor() as cursor:
                 cursor.copy_from(file=buffer, table=model._meta.db_table, columns=dataframe.columns, null='')
             self._connection.commit()
-            return []
+            return [] if returning_columns else None
         except Exception as e:
             self._connection.rollback()
             print(e)
