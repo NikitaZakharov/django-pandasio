@@ -10,11 +10,11 @@ class DataFrameDatabaseSaver(BaseDataFrameDatabaseSaver):
         if dataframe.empty:
             return [] if returning_columns else None
         buffer = io.StringIO()
-        dataframe.to_csv(buffer, sep='\t', header=False, index=False, na_rep='NULL')
+        dataframe.to_csv(buffer, sep='\t', header=False, index=False, na_rep='\\N')
         buffer.seek(0)
         try:
             with self._connection.cursor() as cursor:
-                cursor.copy_from(file=buffer, table=model._meta.db_table, columns=dataframe.columns, null='NULL')
+                cursor.copy_from(file=buffer, table=model._meta.db_table, columns=dataframe.columns, null='\\N')
             self._connection.commit()
             return [] if returning_columns else None
         except Exception as e:
