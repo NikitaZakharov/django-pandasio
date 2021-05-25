@@ -123,6 +123,8 @@ class DataFrameSerializer(serializers.Serializer):
         data = self.to_internal_value(data)
         try:
             data = self.run_validators(data)
+            if data.empty:
+                data = pd.DataFrame(columns=self.initial_data.columns)
             data = self.validate(data)
             assert data is not None, '.validate() should return the validated data'
         except (ValidationError, DjangoValidationError) as exc:
