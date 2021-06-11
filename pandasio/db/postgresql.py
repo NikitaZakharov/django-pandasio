@@ -19,6 +19,7 @@ class DataFrameDatabaseSaver(BaseDataFrameDatabaseSaver):
             with self._connection.cursor() as cursor:
                 cursor.copy_expert(sql=copy_query, file=buffer)
             self._connection.commit()
+            buffer.close()
             return [] if returning_columns else None
         except Exception as e:
             self._connection.rollback()
