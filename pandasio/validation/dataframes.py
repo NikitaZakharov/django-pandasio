@@ -29,13 +29,13 @@ class DataFrameSerializer(serializers.Serializer):
 
         self._errors = defaultdict(list)
 
-    def fail(self, key, **kwargs):
+    def fail(self, key, field=api_settings.NON_FIELD_ERRORS_KEY, **kwargs):
         try:
             msg = self.error_messages[key].format(**kwargs)
         except KeyError:
             class_name = self.__class__.__name__
             msg = MISSING_ERROR_MESSAGE.format(class_name=class_name, key=key)
-        self._errors[api_settings.NON_FIELD_ERRORS_KEY].append(msg)
+        self._errors[field].append(msg)
 
     def to_internal_value(self, data):
         """
