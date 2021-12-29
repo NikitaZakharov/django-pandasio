@@ -191,8 +191,9 @@ class CharField(Field):
         self.trim_whitespace = kwargs.pop('trim_whitespace', True)
         self.max_length = kwargs.pop('max_length', None)
         self.min_length = kwargs.pop('min_length', None)
+        self.trim_overflow = kwargs.pop('trim_overflow', False)
         super().__init__(**kwargs)
-        if self.max_length is not None:
+        if self.max_length is not None and not self.trim_overflow:
             message = self.error_messages['max_length'].format(max_length=self.max_length)
             self.validators.append(
                 validators.MaxLengthValidator(self.max_length, message=message)
@@ -217,6 +218,8 @@ class CharField(Field):
         data = data.str.strip() if self.trim_whitespace else data
         if (data == '').any() and not self.allow_blank:
             self.fail('blank')
+        if self.trim_overflow:
+            data = data.apply(lambda x: x[: self.max_length] if not pd.isnull(x) else x)
         return data
 
     def to_representation(self, value):
