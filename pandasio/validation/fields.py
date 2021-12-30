@@ -15,6 +15,7 @@ __all__ = [
     'ListField'
 ]
 
+NOT_ALLOW_NULL_REPLACE_NULL = 'May not set both `allow_null=False` and `replace_null`'
 
 class Empty(object):
     pass
@@ -32,7 +33,9 @@ class Field(serializers.Field):
     }
 
     def __init__(self, *args, **kwargs):
+        self.replace_null = kwargs.pop('replace_null', None)
         super().__init__(*args, **kwargs)
+        assert self.allow_null or self.replace_null is None, NOT_ALLOW_NULL_REPLACE_NULL
 
     def validate_empty_values(self, column):
         """
@@ -56,7 +59,9 @@ class Field(serializers.Field):
             return True, self.get_default()
 
         if column.isnull().any():
-            if not self.allow_null:
+            if self.replace_null is not None:
+                column = column.fillna(self.replace_null)
+            elif not self.allow_null:
                 self.fail('null')
             # Nullable `source='*'` fields should not be skipped when its named
             # field is given a null value. This is because `source='*'` means
@@ -186,8 +191,9 @@ class CharField(Field):
         self.trim_whitespace = kwargs.pop('trim_whitespace', True)
         self.max_length = kwargs.pop('max_length', None)
         self.min_length = kwargs.pop('min_length', None)
+        self.trim_extra = kwargs.pop('trim_extra', False)
         super().__init__(**kwargs)
-        if self.max_length is not None:
+        if self.max_length is not None and not self.trim_extra:
             message = self.error_messages['max_length'].format(max_length=self.max_length)
             self.validators.append(
                 validators.MaxLengthValidator(self.max_length, message=message)
@@ -212,6 +218,8 @@ class CharField(Field):
         data = data.str.strip() if self.trim_whitespace else data
         if (data == '').any() and not self.allow_blank:
             self.fail('blank')
+        if self.trim_extra:
+            data = data.str[:self.max_length]
         return data
 
     def to_representation(self, value):
