@@ -218,7 +218,7 @@ class CharField(Field):
         data = data.str.strip() if self.trim_whitespace else data
         if (data == '').any() and not self.allow_blank:
             self.fail('blank')
-        if self.trim_extra:
+        if self.trim_extra and self.max_length is not None:
             data = data.str[:self.max_length]
         return data
 
