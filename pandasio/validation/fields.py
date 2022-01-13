@@ -345,7 +345,7 @@ class DateField(Field):
         try:
             data = pd.to_datetime(data, format=self.format, errors='coerce' if self.allow_null else 'raise').dt.date
             if self.allow_null:
-                data = data.apply(lambda x: x if not pd.isnull(x) else None, convert_dtype=False)
+                data = data.apply(lambda x: x if not pd.isnull(x) else self.replace_null, convert_dtype=False)
         except ValueError:
             self.fail('invalid', format=self.format)
 
