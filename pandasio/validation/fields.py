@@ -374,7 +374,7 @@ class DateTimeField(Field):
             if self.allow_null:
                 data = data.apply(lambda x: x if not pd.isnull(x) else None, convert_dtype=False)
         except ValueError:
-            self.fail('invalid')
+            self.fail('invalid', format=self.format)
 
             series = pd.to_datetime(data, format=self.format, errors='coerce')
             return series[series.notna()]
